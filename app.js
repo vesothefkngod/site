@@ -1,150 +1,373 @@
-const fs = require("fs");
-const path = require("path");
-const express = require("express");
-const session = require("express-session");
-const bodyParser = require("body-parser");
-const bcrypt = require("bcryptjs");
-const sqlite3 = require("sqlite3").verbose();
+const express = require('express');
+const sqlite3 = require('sqlite3').verbose();
+const path = require('path');
+const crypto = require('crypto');
+const axios = require('axios');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const port = process.env.PORT || 3000;
 
-const dbPath = path.join(__dirname, "db", "store.sqlite");
-const db = new sqlite3.Database(dbPath);
+// Database setup
+const db = new sqlite3.Database('store.sqlite');
 
+// Middleware
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(express.static('public'));
+app.set('view engine', 'ejs');
+
+// API Configuration
+const WOLVPAY_API_KEY = 'wlov_live_70b44b3fb1bc51c5f3c2f4757904e7e3';
+const WOLVPAY_WEBHOOK = 'c2d12939cdabd9cfbf9bf615a8f697f7b6ab0066bece629784657bb4171fa401';
+const OXAPAY_API_KEY = 'FGUKRJ-99OGIU-GJUEAB-SO5IM7';
+
+// Initialize database tables
 db.serialize(() => {
-  db.run(`CREATE TABLE IF NOT EXISTS products (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    description TEXT,
-    price REAL NOT NULL,
-    image TEXT
-  )`);
+    // Products table
+    db.run(`CREATE TABLE IF NOT EXISTS products (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        description TEXT,
+        price REAL NOT NULL,
+        image TEXT
+    )`);
 
-  db.run(`CREATE TABLE IF NOT EXISTS orders (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    product_id INTEGER NOT NULL,
-    user_email TEXT,
-    status TEXT DEFAULT 'pending',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(product_id) REFERENCES products(id)
-  )`);
+    // Orders table with crypto payment support
+    db.run(`CREATE TABLE IF NOT EXISTS orders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        customer_email TEXT NOT NULL,
+        total_amount REAL NOT NULL,
+        payment_method TEXT NOT NULL,
+        payment_status TEXT DEFAULT 'pending',
+        crypto_address TEXT,
+        crypto_amount TEXT,
+        crypto_currency TEXT,
+        payment_id TEXT,
+        webhook_data TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`);
 
-  db.run(`CREATE TABLE IF NOT EXISTS admin_users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT UNIQUE,
-    password_hash TEXT
-  )`);
+    // Order items table
+    db.run(`CREATE TABLE IF NOT EXISTS order_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        order_id INTEGER,
+        product_id INTEGER,
+        quantity INTEGER,
+        price REAL,
+        FOREIGN KEY(order_id) REFERENCES orders(id),
+        FOREIGN KEY(product_id) REFERENCES products(id)
+    )`);
 });
 
-db.get("SELECT COUNT(*) as c FROM admin_users", (err, row) => {
-  if (row && row.c === 0) {
-    const hash = bcrypt.hashSync("admin123", 10);
-    db.run("INSERT INTO admin_users (username, password_hash) VALUES (?, ?)", ["admin", hash]);
-    console.log("🛡️  Seeded admin user → username: admin / password: admin123");
-  }
-});
-
-db.get("SELECT COUNT(*) as c FROM products", (err, row) => {
-  if (row && row.c === 0) {
-    const seed = [
-      ["Худи Blackout", "Oversized, heavy cotton. Cyberpunk embroidery.", 89.00, "https://picsum.photos/seed/hoodie/400/300"],
-      ["Шапка GhostCap", "Snapback, stealth logo, low-profile.", 29.00, "https://picsum.photos/seed/cap/400/300"],
-      ["DarkMode Ebook", "Playbook: underground branding & ops.", 19.00, "https://picsum.photos/seed/ebook/400/300"],
-      ["Sticker Pack VND", "10 premium matte stickers.", 9.90, "https://picsum.photos/seed/stickers/400/300"]
-    ];
-    const stmt = db.prepare("INSERT INTO products (name, description, price, image) VALUES (?, ?, ?, ?)");
-    seed.forEach(p => stmt.run(p));
-    stmt.finalize();
-    console.log("🧪 Seeded test products.");
-  }
-});
-
-app.use(bodyParser.urlencoded({ extended: true }));
-app.use(bodyParser.json());
-app.use(express.static(path.join(__dirname, "public")));
-app.set("view engine", "ejs");
-
-app.use(session({
-  secret: "tumnata-mreja-secret",
-  resave: false,
-  saveUninitialized: false,
-  cookie: { maxAge: 1000 * 60 * 60 }
-}));
-
-function requireAdmin(req, res, next) {
-  if (!req.session || !req.session.admin) return res.redirect("/admin/login");
-  next();
-}
-
-app.get("/", (req, res) => {
-  db.all("SELECT * FROM products ORDER BY id DESC", (err, products) => {
-    res.render("index", { products });
-  });
-});
-
-app.get("/product/:id", (req, res) => {
-  db.get("SELECT * FROM products WHERE id = ?", [req.params.id], (err, product) => {
-    if (!product) return res.status(404).send("Product not found");
-    res.render("product", { product });
-  });
-});
-
-app.post("/checkout/:id", (req, res) => {
-  const pid = req.params.id;
-  const email = req.body.email || null;
-  db.run("INSERT INTO orders (product_id, user_email, status) VALUES (?, ?, 'pending')",
-    [pid, email], function (err) {
-      if (err) return res.status(500).send("Order error");
-      res.render("checkout", { orderId: this.lastID, provider: null });
+// Routes
+app.get('/', (req, res) => {
+    db.all("SELECT * FROM products", [], (err, products) => {
+        if (err) {
+            console.error(err);
+            return res.status(500).send('Database error');
+        }
+        res.render('index', { products });
     });
 });
 
-app.get("/admin/login", (req, res) => {
-  res.render("admin_login", { error: null });
+app.get('/product/:id', (req, res) => {
+    const productId = req.params.id;
+    db.get("SELECT * FROM products WHERE id = ?", [productId], (err, product) => {
+        if (err) {
+            console.error(err);
+            return res.status(500).send('Database error');
+        }
+        if (!product) {
+            return res.status(404).send('Product not found');
+        }
+        res.render('product', { product });
+    });
 });
 
-app.post("/admin/login", (req, res) => {
-  const { username, password } = req.body;
-  db.get("SELECT * FROM admin_users WHERE username = ?", [username], (err, user) => {
-    if (!user) return res.render("admin_login", { error: "Невалидни данни" });
-    if (!bcrypt.compareSync(password, user.password_hash)) return res.render("admin_login", { error: "Невалидни данни" });
-    req.session.admin = { id: user.id, username: user.username };
-    res.redirect("/admin");
-  });
+app.get('/checkout', (req, res) => {
+    const cartItems = req.query.items ? JSON.parse(req.query.items) : [];
+    let total = 0;
+    
+    if (cartItems.length > 0) {
+        const productIds = cartItems.map(item => item.id).join(',');
+        db.all(`SELECT * FROM products WHERE id IN (${productIds})`, [], (err, products) => {
+            if (err) {
+                console.error(err);
+                return res.status(500).send('Database error');
+            }
+            
+            const cartWithDetails = cartItems.map(cartItem => {
+                const product = products.find(p => p.id == cartItem.id);
+                const itemTotal = product.price * cartItem.quantity;
+                total += itemTotal;
+                return {
+                    ...product,
+                    quantity: cartItem.quantity,
+                    itemTotal: itemTotal
+                };
+            });
+            
+            res.render('checkout', { 
+                cartItems: cartWithDetails, 
+                total: total.toFixed(2)
+            });
+        });
+    } else {
+        res.render('checkout', { cartItems: [], total: '0.00' });
+    }
 });
 
-app.get("/admin/logout", (req, res) => {
-  req.session.destroy(() => res.redirect("/admin/login"));
+// WolvPay payment creation
+async function createWolvPayPayment(orderData) {
+    try {
+        const response = await axios.post('https://api.wolvpay.com/v1/payments', {
+            amount: orderData.total,
+            currency: 'USD',
+            order_id: orderData.orderId,
+            callback_url: `${process.env.BASE_URL || 'http://localhost:3000'}/webhook/wolvpay`,
+            customer_email: orderData.email
+        }, {
+            headers: {
+                'Authorization': `Bearer ${WOLVPAY_API_KEY}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        return response.data;
+    } catch (error) {
+        console.error('WolvPay API Error:', error.response?.data || error.message);
+        throw error;
+    }
+}
+
+// OxaPay payment creation
+async function createOxaPayPayment(orderData) {
+    try {
+        const response = await axios.post('https://api.oxapay.com/merchants/request', {
+            merchant: OXAPAY_API_KEY,
+            amount: orderData.total,
+            currency: 'USD',
+            lifeTime: 30,
+            feePaidByPayer: 0,
+            underPaidCover: 5,
+            callbackUrl: `${process.env.BASE_URL || 'http://localhost:3000'}/webhook/oxapay`,
+            returnUrl: `${process.env.BASE_URL || 'http://localhost:3000'}/payment-success`,
+            description: `Order #${orderData.orderId}`
+        }, {
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        return response.data;
+    } catch (error) {
+        console.error('OxaPay API Error:', error.response?.data || error.message);
+        throw error;
+    }
+}
+
+// Process payment
+app.post('/process-payment', async (req, res) => {
+    const { email, cartItems, total, paymentMethod } = req.body;
+    
+    try {
+        // Create order in database
+        db.run(
+            "INSERT INTO orders (customer_email, total_amount, payment_method) VALUES (?, ?, ?)",
+            [email, total, paymentMethod],
+            async function(err) {
+                if (err) {
+                    console.error(err);
+                    return res.status(500).json({ error: 'Failed to create order' });
+                }
+                
+                const orderId = this.lastID;
+                
+                // Add order items
+                const cartData = JSON.parse(cartItems);
+                for (const item of cartData) {
+                    db.run(
+                        "INSERT INTO order_items (order_id, product_id, quantity, price) VALUES (?, ?, ?, ?)",
+                        [orderId, item.id, item.quantity, item.price]
+                    );
+                }
+                
+                const orderData = {
+                    orderId: orderId,
+                    email: email,
+                    total: parseFloat(total)
+                };
+                
+                try {
+                    let paymentResponse;
+                    
+                    if (paymentMethod === 'wolvpay') {
+                        paymentResponse = await createWolvPayPayment(orderData);
+                        
+                        // Update order with payment details
+                        db.run(
+                            "UPDATE orders SET payment_id = ?, crypto_address = ?, crypto_amount = ?, crypto_currency = ? WHERE id = ?",
+                            [paymentResponse.payment_id, paymentResponse.address, paymentResponse.amount, paymentResponse.currency, orderId]
+                        );
+                        
+                        res.json({
+                            success: true,
+                            paymentUrl: paymentResponse.payment_url,
+                            paymentDetails: {
+                                address: paymentResponse.address,
+                                amount: paymentResponse.amount,
+                                currency: paymentResponse.currency,
+                                qr_code: paymentResponse.qr_code
+                            }
+                        });
+                        
+                    } else if (paymentMethod === 'oxapay') {
+                        paymentResponse = await createOxaPayPayment(orderData);
+                        
+                        if (paymentResponse.result === 100) {
+                            // Update order with payment details
+                            db.run(
+                                "UPDATE orders SET payment_id = ?, crypto_address = ?, crypto_amount = ?, crypto_currency = ? WHERE id = ?",
+                                [paymentResponse.trackId, paymentResponse.payLink, paymentResponse.amount, paymentResponse.currency, orderId]
+                            );
+                            
+                            res.json({
+                                success: true,
+                                paymentUrl: paymentResponse.payLink,
+                                paymentDetails: {
+                                    trackId: paymentResponse.trackId,
+                                    amount: paymentResponse.amount,
+                                    currency: paymentResponse.currency
+                                }
+                            });
+                        } else {
+                            throw new Error('OxaPay payment creation failed');
+                        }
+                    } else {
+                        res.status(400).json({ error: 'Invalid payment method' });
+                    }
+                    
+                } catch (paymentError) {
+                    console.error('Payment creation error:', paymentError);
+                    res.status(500).json({ error: 'Payment creation failed. Please try again.' });
+                }
+            }
+        );
+    } catch (error) {
+        console.error('Order processing error:', error);
+        res.status(500).json({ error: 'Failed to process order' });
+    }
 });
 
-app.get("/admin", requireAdmin, (req, res) => {
-  db.all("SELECT * FROM products ORDER BY id DESC", (err, products) => {
-    db.all("SELECT o.id, o.status, o.created_at, p.name as product_name, p.price FROM orders o JOIN products p ON p.id = o.product_id ORDER BY o.id DESC",
-      (err2, orders) => {
-        res.render("admin_dashboard", { products, orders, admin: req.session.admin });
-      });
-  });
+// WolvPay webhook
+app.post('/webhook/wolvpay', (req, res) => {
+    const webhookData = req.body;
+    console.log('WolvPay Webhook received:', webhookData);
+    
+    // Verify webhook signature if needed
+    const receivedSignature = req.headers['x-webhook-signature'];
+    const expectedSignature = crypto.createHmac('sha256', WOLVPAY_WEBHOOK)
+        .update(JSON.stringify(webhookData))
+        .digest('hex');
+    
+    if (receivedSignature !== expectedSignature) {
+        return res.status(401).send('Unauthorized');
+    }
+    
+    // Update order status
+    if (webhookData.status === 'completed') {
+        db.run(
+            "UPDATE orders SET payment_status = 'completed', webhook_data = ? WHERE payment_id = ?",
+            [JSON.stringify(webhookData), webhookData.payment_id],
+            (err) => {
+                if (err) {
+                    console.error('Failed to update order:', err);
+                    return res.status(500).send('Failed to update order');
+                }
+                console.log(`Order with payment ID ${webhookData.payment_id} marked as completed`);
+                res.status(200).send('OK');
+            }
+        );
+    } else {
+        res.status(200).send('OK');
+    }
 });
 
-app.post("/admin/product/add", requireAdmin, (req, res) => {
-  const { name, description, price, image } = req.body;
-  db.run("INSERT INTO products (name, description, price, image) VALUES (?, ?, ?, ?)",
-    [name, description, price, image || ""], () => res.redirect("/admin"));
+// OxaPay webhook
+app.post('/webhook/oxapay', (req, res) => {
+    const webhookData = req.body;
+    console.log('OxaPay Webhook received:', webhookData);
+    
+    // Update order status
+    if (webhookData.status === 'Paid') {
+        db.run(
+            "UPDATE orders SET payment_status = 'completed', webhook_data = ? WHERE payment_id = ?",
+            [JSON.stringify(webhookData), webhookData.trackId],
+            (err) => {
+                if (err) {
+                    console.error('Failed to update order:', err);
+                    return res.status(500).send('Failed to update order');
+                }
+                console.log(`Order with track ID ${webhookData.trackId} marked as completed`);
+                res.status(200).send('OK');
+            }
+        );
+    } else {
+        res.status(200).send('OK');
+    }
 });
 
-app.post("/admin/product/delete/:id", requireAdmin, (req, res) => {
-  db.run("DELETE FROM products WHERE id = ?", [req.params.id], () => res.redirect("/admin"));
+// Payment success page
+app.get('/payment-success', (req, res) => {
+    res.send(`
+        <div style="text-align: center; padding: 50px; font-family: Arial;">
+            <h2>✅ Payment Successful!</h2>
+            <p>Your order has been processed successfully.</p>
+            <p>You will receive a confirmation email shortly.</p>
+            <a href="/" style="background: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Continue Shopping</a>
+        </div>
+    `);
 });
 
-app.post("/pay/wolvpay/:orderId", (req, res) => {
-  const orderId = req.params.orderId;
-  res.send(`WolvPay flow pending setup for order ${orderId}`);
+// Admin routes
+app.get('/admin', (req, res) => {
+    res.render('admin_login');
 });
 
-app.post("/pay/oxapay/:orderId", (req, res) => {
-  const orderId = req.params.orderId;
-  res.send(`OxaPay flow pending setup for order ${orderId}`);
+app.get('/admin/dashboard', (req, res) => {
+    // Get orders with payment details
+    db.all(`
+        SELECT o.*, 
+               COUNT(oi.id) as item_count
+        FROM orders o 
+        LEFT JOIN order_items oi ON o.id = oi.order_id 
+        GROUP BY o.id 
+        ORDER BY o.created_at DESC
+    `, [], (err, orders) => {
+        if (err) {
+            console.error(err);
+            return res.status(500).send('Database error');
+        }
+        res.render('admin_dashboard', { orders });
+    });
 });
 
-app.listen(PORT, () => console.log(`🚀 Store running at http://localhost:${PORT}`));
+// Check payment status endpoint
+app.get('/check-payment/:orderId', (req, res) => {
+    const orderId = req.params.orderId;
+    
+    db.get("SELECT payment_status FROM orders WHERE id = ?", [orderId], (err, order) => {
+        if (err) {
+            return res.status(500).json({ error: 'Database error' });
+        }
+        if (!order) {
+            return res.status(404).json({ error: 'Order not found' });
+        }
+        res.json({ status: order.payment_status });
+    });
+});
+
+app.listen(port, () => {
+    console.log(`🚀 Crypto Store running on port ${port}`);
+    console.log(`💎 WolvPay and OxaPay integration active`);
+});
