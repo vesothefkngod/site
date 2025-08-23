@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TumnaMreja - Crypto Payment</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            background: white;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .user-info h1 {
+            color: #333;
+            margin-bottom: 5px;
+        }
+        
+        .user-info p {
+            color: #6c757d;
+        }
+        
+        .logout-btn {
+            background: #dc3545;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 600;
+        }
+        
+        .products-section {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+        }
+        
+        .products-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 25px;
+            margin-top: 20px;
+        }
+        
+        .product-card {
+            border: 2px solid #e9ecef;
+            border-radius: 12px;
+            overflow: hidden;
+            transition: all 0.3s;
+            background: white;
+        }
+        
+        .product-card:hover {
+            border-color: #007bff;
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+        }
+        
+        .product-image {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+        }
+        
+        .product-info {
+            padding: 20px;
+        }
+        
+        .product-name {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 10px;
+        }
+        
+        .product-description {
+            color: #6c757d;
+            margin-bottom: 15px;
+            font-size: 0.95em;
+        }
+        
+        .product-price {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #28a745;
+            margin-bottom: 20px;
+        }
+        
+        .buy-form {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .quantity-input {
+            width: 60px;
+            padding: 8px;
+            border: 2px solid #dee2e6;
+            border-radius: 6px;
+            text-align: center;
+        }
+        
+        .buy-btn {
+            flex: 1;
+            background: linear-gradient(45deg, #28a745, #20c997);
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+        
+        .buy-btn:hover {
+            background: linear-gradient(45deg, #218838, #1e7e34);
+            transform: translateY(-2px);
+        }
+        
+        .buy-btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .orders-section {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+        
+        .orders-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        
+        .orders-table th,
+        .orders-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #dee2e6;
+        }
+        
+        .orders-table th {
+            background: #f8f9fa;
+            font-weight: 600;
+        }
+        
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .status-pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+        
+        .status-completed {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .payment-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.8);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            max-width: 500px;
+            width: 90%;
+            text-align: center;
+            position: relative;
+        }
+        
+        .close-btn {
+            position: absolute;
+            top: 15px;
+            right: 20px;
+            font-size: 24px;
+            cursor: pointer;
+            color: #aaa;
+        }
+        
+        .payment-info {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            text-align: left;
+        }
+        
+        .payment-url {
+            background: #007bff;
+            color: white;
+            padding: 15px 30px;
+            text-decoration: none;
+            border-radius: 8px;
+            display: inline-block;
+            margin: 20px 0;
+            font-weight: bold;
+        }
+        
+        .loading {
+            display: none;
+        }
+        
+        .loading.show {
+            display: block;
+        }
+        
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        @media (max-width: 768px) {
+            .header {
+                flex-direction: column;
+                gap: 15px;
+                text-align: center;
+            }
+            
+            .products-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="user-info">
+                <h1>👋 Добре дошли, <%= user.username %>!</h1>
+                <p>TumnaMreja @ Dashboard</p>
+            </div>
+            <a href="/logout" class="logout-btn">Logout</a>
+        </div>
+        
+        <div class="products-section">
+            <h2>🛍️ Available Products</h2>
+            <div class="products-grid">
+                <% products.forEach(product => { %>
+                    <div class="product-card">
+                        <img src="<%= product.image %>" alt="<%= product.name %>" class="product-image">
+                        <div class="product-info">
+                            <div class="product-name"><%= product.name %></div>
+                            <div class="product-description"><%= product.description %></div>
+                            <div class="product-price">$<%= product.price.toFixed(2) %></div>
+                            <div class="buy-form">
+                                <input type="number" value="1" min="1" max="10" class="quantity-input" id="qty-<%= product.id %>">
+                                <button class="buy-btn" onclick="buyProduct(<%= product.id %>, '<%= product.name %>', <%= product.price %>)">
+                                    💳 Buy Now
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                <% }) %>
+            </div>
+        </div>
+        
+        <div class="orders-section">
+            <h2>📦 Your Orders</h2>
+            <% if (orders.length > 0) { %>
+                <table class="orders-table">
+                    <thead>
+                        <tr>
+                            <th>Order ID</th>
+                            <th>Product</th>
+                            <th>Quantity</th>
+                            <th>Amount</th>
+                            <th>Status</th>
+                            <th>Date</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <% orders.forEach(order => { %>
+                            <tr>
+                                <td>#<%= order.id %></td>
+                                <td><%= order.product_name %></td>
+                                <td><%= order.quantity %></td>
+                                <td>$<%= order.total_amount.toFixed(2) %></td>
+                                <td>
+                                    <span class="status-badge status-<%= order.payment_status %>">
+                                        <%= order.payment_status %>
+                                    </span>
+                                </td>
+                                <td><%= new Date(order.created_at).toLocaleDateString() %></td>
+                            </tr>
+                        <% }) %>
+                    </tbody>
+                </table>
+            <% } else { %>
+                <p style="text-align: center; color: #6c757d; padding: 40px;">
+                    No orders yet. Buy something! 🛒
+                </p>
+            <% } %>
+        </div>
+    </div>
+    
+    <!-- Payment Modal -->
+    <div class="payment-modal" id="paymentModal">
+        <div class="modal-content">
+            <span class="close-btn" onclick="closePaymentModal()">&times;</span>
+            <h3 id="modalTitle">💳 Complete Payment</h3>
+            
+            <div id="loadingDiv" class="loading">
+                <div class="spinner"></div>
+                <p>Creating payment...</p>
+            </div>
+            
+            <div id="paymentDiv" style="display: none;">
+                <div class="payment-info" id="paymentInfo"></div>
+                <a id="paymentLink" href="#" target="_blank" class="payment-url">
+                    🚀 Pay with Crypto
+                </a>
+                <p style="color: #28a745; font-weight: bold; margin-top: 15px;">
+                    ✅ Payment will be confirmed automatically
+                </p>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        function buyProduct(productId, productName, price) {
+            const quantity = parseInt(document.getElementById(`qty-${productId}`).value);
+            const total = (price * quantity).toFixed(2);
+            
+            // Show modal
+            document.getElementById('paymentModal').style.display = 'flex';
+            document.getElementById('modalTitle').textContent = `Buy ${productName} (x${quantity})`;
+            document.getElementById('loadingDiv').classList.add('show');
+            document.getElementById('paymentDiv').style.display = 'none';
+            
+            // Create payment
+            fetch(`/buy/${productId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ quantity })
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('loadingDiv').classList.remove('show');
+                
+                if (data.success) {
+                    document.getElementById('paymentInfo').innerHTML = `
+                        <div><strong>Product:</strong> ${productName}</div>
+                        <div><strong>Quantity:</strong> ${quantity}</div>
+                        <div><strong>Total:</strong> $${total}</div>
+                        <div><strong>Payment ID:</strong> ${data.paymentId}</div>
+                        <div><strong>Order ID:</strong> #${data.orderId}</div>
+                    `;
+                    document.getElementById('paymentLink').href = data.paymentUrl;
+                    document.getElementById('paymentDiv').style.display = 'block';
+                } else {
+                    alert('Payment creation failed: ' + data.error);
+                    closePaymentModal();
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Payment creation failed');
+                closePaymentModal();
+            });
+        }
+        
+        function closePaymentModal() {
+            document.getElementById('paymentModal').style.display = 'none';
+            // Refresh page to show updated orders
+            setTimeout(() => {
+                location.reload();
+            }, 1000);
+        }
+        
+        // Close modal when clicking outside
+        window.onclick = function(event) {
+            const modal = document.getElementById('paymentModal');
+            if (event.target === modal) {
+                closePaymentModal();
+            }
+        }
+    </script>
+</body>
+</html>
