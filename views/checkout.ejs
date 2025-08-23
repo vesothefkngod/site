@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+  <meta charset="UTF-8">
+  <title>Checkout – Поръчка #<%= orderId %></title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="container">
+    <h1>🧾 Поръчка #<%= orderId %></h1>
+    <p>Поръчката е създадена със статус <b>pending</b>.</p>
+    <p class="note">Следваща стъпка: избор на платежна система (ще добавим WolvPay/OxaPay redirect).</p>
+    <div class="flex">
+      <form method="POST" action="/pay/wolvpay/<%= orderId %>">
+        <button type="submit">Плати с WolvPay</button>
+      </form>
+      <form method="POST" action="/pay/oxapay/<%= orderId %>">
+        <button type="submit">Плати с OxaPay</button>
+      </form>
+    </div>
+  </div>
+</body>
+</html>

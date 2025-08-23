@@ -1,0 +1,291 @@
+:root{--bg:#04050a;--card:#07101a;--muted:#7ea6c0;--neon:#00ffd1;--accent:#7cff00}
+body {
+  background-color: #010203;
+  background-image: radial-gradient(circle at top left, #0a0f1a 0%, #010203 100%);
+  color: #dff7ff;
+  font-family: Inter, system-ui, Arial;
+  margin: 0;
+}
+.site-header
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}.header {
+  background: linear-gradient(to right, #000, #222);
+  color: #0ff;
+  text-align: center;
+  padding: 40px 20px;
+  border-bottom: 2px solid #0ff;
+  box-shadow: 0 4px 10px #0ff4;
+}
+
+.header h1 {
+  font-size: 36px;
+  margin-bottom: 10px;
+}
+
+.header .note {
+  font-style: italic;
+  color: #ccc;
+}
+.main-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: linear-gradient(to right, #4CAF50, #81C784);
+  padding: 20px 40px;
+  color: white;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+
+.main-header .logo {
+  font-size: 28px;
+  font-weight: bold;
+}
+
+.main-nav a {
+  margin-left: 20px;
+  text-decoration: none;
+  color: white;
+  font-weight: 500;
+  transition: color 0.3s ease;
+}
+
+.main-nav a:hover {
+  color: #f0f0f0;
+}
+
+/* ПРОДУКТИ */
+.grid {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 30px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding: 40px;
+}
+
+.card {
+  background-color: #111;
+  border: 1px solid #333;
+  border-radius: 8px;
+  width: 250px;
+  padding: 20px;
+  color: #eee;
+  text-align: center;
+  box-shadow: 0 0 10px #0ff2;
+  transition: transform 0.3s ease;
+}
+
+.card:hover {
+  transform: scale(1.05);
+}
+
+.card img {
+  max-width: 100%;
+  border-radius: 6px;
+  margin-bottom: 10px;
+}
+
+.card .btn {
+  display: inline-block;
+  margin-top: 10px;
+  padding: 8px 16px;
+  background-color: #0ff;
+  color: #000;
+  text-decoration: none;
+  border-radius: 4px;
+  font-weight: bold;
+}
+
+/* FOOTER */
+.portfolio-footer {
+  background: linear-gradient(to right, #0a0f1a, #010203);
+  color: #e0f7ff;
+  padding: 60px 40px;
+  border-top: 2px solid #00ffd1;
+  box-shadow: 0 -4px 20px rgba(0, 255, 209, 0.3);
+  font-family: 'Orbitron', sans-serif;
+}
+
+.footer-title {
+  font-size: 28px;
+  font-weight: bold;
+  color: #00ffd1;
+  margin-bottom: 30px;
+  text-align: center;
+}
+
+.footer-columns {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 40px;
+}
+
+.footer-section h4 {
+  color: #7cff00;
+  margin-bottom: 10px;
+}
+
+.footer-section a {
+  color: #e0f7ff;
+  text-decoration: none;
+}
+
+.footer-section a:hover {
+  color: #00ffd1;
+}
+
+.footer-bottom {
+  margin-top: 40px;
+  text-align: center;
+  font-size: 14px;
+  color: #888;
+}
+.footer-icons {
+  display: flex;
+  justify-content: center;
+  gap: 24px;
+  margin-bottom: 16px;
+}
+
+.footer-icons img {
+  width: 32px;
+  height: 32px;
+  filter: drop-shadow(0 0 4px #00ffe0);
+  transition: transform 0.3s ease, filter 0.3s ease;
+}
+
+.footer-icons a:hover img {
+  transform: scale(1.2);
+  filter: drop-shadow(0 0 6px #00ffe0);
+}
+
+.footer-text {
+  color: #e0f7ff;
+  font-size: 14px;
+  opacity: 0.7;
+}
+.footer-section p i {
+  margin-right: 8px;
+  color: var(--neon);
+  font-size: 16px;
+}
+.footer-contacts {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 20px;
+  margin-top: 20px;
+  font-size: 15px;
+  color: #e0f7ff;
+}
+
+.footer-contacts span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background-color: rgba(255, 255, 255, 0.05);
+  padding: 6px 12px;
+  border-radius: 6px;
+  transition: background 0.3s ease;
+}
+
+.footer-contacts span:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.footer-contacts i {
+  color: var(--neon);
+  font-size: 16px;
+}
+
+.lang a{color:var(--muted);text-decoration:none;margin-left:10px}
+main{padding:24px}
+.grid{display: flex;
+  justify-content: center; /* Центрира по хоризонтала */
+  align-items: center;     /* Центрира по вертикала, ако има височина */
+  gap: 20px;               /* Разстояние между продуктите */
+  flex-wrap: nowrap;       /* Всички продукти в един ред */}
+.card {
+  background: linear-gradient(135deg, #07101a, #0a1b2c);
+  border: 1px solid var(--neon);
+  box-shadow: 0 0 20px var(--neon);
+  transition: transform 0.4s ease, box-shadow 0.4s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.card:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 30px var(--accent);
+}
+
+.card::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle, rgba(0,255,209,0.1), transparent 60%);
+  animation: rotateGlow 6s linear infinite;
+}
+
+@keyframes rotateGlow {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+.muted{color:var(--muted);font-size:13px}
+.price{font-weight:800;color:var(--neon);margin-top:8px}
+.btn {
+  background: var(--neon);
+  color: #002;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-weight: 700;
+  text-decoration: none;
+  position: relative;
+  animation: pulseBtn 2s infinite;
+}
+
+@keyframes pulseBtn {
+  0% { box-shadow: 0 0 5px var(--neon); }
+  50% { box-shadow: 0 0 20px var(--neon); }
+  100% { box-shadow: 0 0 5px var(--neon); }
+.product-page{display:flex;gap:24px;flex-wrap:wrap}
+.product-page .left{flex:1;min-width:280px}.product-page .right{flex:1;min-width:280px}
+label{display:block;margin:10px 0;color:#cfeefc}
+input,textarea,select{width:100%;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.03);background:#071727;color:#e7f7ff}
+button{background:var(--accent);border:0;color:#04110a;padding:10px 14px;border-radius:10px;font-weight:800;cursor:pointer}
+table{width:100%;border-collapse:collapse;margin-bottom:24px}table th,table td{padding:8px;border-bottom:1px solid rgba(255,255,255,0.03);text-align:left}
+.site-footer{padding:18px;text-align:center;color:#6b93a8;border-top:1px solid rgba(255,255,255,0.03)}
+@media(max-width:800px){.product-page{flex-direction:column}}
+.nav-links a {
+  position: relative;
+  color: var(--muted);
+  margin-left: 24px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: color 0.3s ease;
+}
+
+.nav-links a:hover {
+  color: var(--neon);
+  animation: glitch 0.6s linear infinite;
+}
+
+@keyframes glitch {
+  0% { text-shadow: 2px 0 red, -2px 0 blue; }
+  25% { text-shadow: -2px 0 red, 2px 0 blue; }
+  50% { text-shadow: 2px 0 blue, -2px 0 red; }
+  75% { text-shadow: -2px 0 blue, 2px 0 red; }
+  100% { text-shadow: 2px 0 red, -2px 0 blue; }
+}
+.fa-signal-messenger:hover {
+  color: #00BFA5;
+  transform: scale(1.2);
+  transition: 0.3s ease;
+}
