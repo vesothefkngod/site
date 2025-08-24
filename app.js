@@ -4,6 +4,7 @@ const path = require('path');
 const crypto = require('crypto');
 const axios = require('axios');
 const bcrypt = require('bcrypt');
+const cookieParser = require('cookie-parser');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -14,6 +15,7 @@ const db = new sqlite3.Database('store.sqlite');
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
 app.use(express.static('public'));
 app.set('view engine', 'ejs');
 
@@ -86,7 +88,7 @@ db.serialize(() => {
 const sessions = {};
 
 function requireAuth(req, res, next) {
-    const sessionId = req.headers['x-session-id'] || req.query.session;
+    const sessionId = req.cookies.sessionId;
     if (sessionId && sessions[sessionId]) {
         req.user = sessions[sessionId];
         next();
