@@ -3,8 +3,6 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const crypto = require('crypto');
 const axios = require('axios');
-const bcrypt = require('bcrypt');
-const cookieParser = require('cookie-parser');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -15,323 +13,361 @@ const db = new sqlite3.Database('store.sqlite');
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(cookieParser());
 app.use(express.static('public'));
 app.set('view engine', 'ejs');
 
-// OxaPay API (само този ще използваме)
+// API Configuration
+const WOLVPAY_API_KEY = 'wlov_live_70b44b3fb1bc51c5f3c2f4757904e7e3';
+const WOLVPAY_WEBHOOK = 'c2d12939cdabd9cfbf9bf615a8f697f7b6ab0066bece629784657bb4171fa401';
 const OXAPAY_API_KEY = 'FGUKRJ-99OGIU-GJUEAB-SO5IM7';
 
-// Initialize database
+// Initialize database tables
 db.serialize(() => {
-    // Users table
-    db.run(`CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT UNIQUE NOT NULL,
-        password TEXT NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )`);
-
     // Products table
     db.run(`CREATE TABLE IF NOT EXISTS products (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
         description TEXT,
         price REAL NOT NULL,
-        image TEXT,
+        image TEXT
+    )`);
+
+    // Orders table with crypto payment support
+    db.run(`CREATE TABLE IF NOT EXISTS orders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        customer_email TEXT NOT NULL,
+        total_amount REAL NOT NULL,
+        payment_method TEXT NOT NULL,
+        payment_status TEXT DEFAULT 'pending',
+        crypto_address TEXT,
+        crypto_amount TEXT,
+        crypto_currency TEXT,
+        payment_id TEXT,
+        webhook_data TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
 
-    // Orders table
-    db.run(`CREATE TABLE IF NOT EXISTS orders (
+    // Order items table
+    db.run(`CREATE TABLE IF NOT EXISTS order_items (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER,
+        order_id INTEGER,
         product_id INTEGER,
-        quantity INTEGER DEFAULT 1,
-        total_amount REAL NOT NULL,
-        payment_status TEXT DEFAULT 'pending',
-        payment_id TEXT,
-        crypto_address TEXT,
-        crypto_amount TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY(user_id) REFERENCES users(id),
+        quantity INTEGER,
+        price REAL,
+        FOREIGN KEY(order_id) REFERENCES orders(id),
         FOREIGN KEY(product_id) REFERENCES products(id)
     )`);
-
-    // Add sample products
-    db.get("SELECT COUNT(*) as count FROM products", (err, row) => {
-        if (!err && row.count === 0) {
-            const products = [
-                ['Premium Package', 'High-quality digital product', 29.99, 'https://via.placeholder.com/300x200/007bff/ffffff?text=Premium'],
-                ['Standard Package', 'Good value for money', 19.99, 'https://via.placeholder.com/300x200/28a745/ffffff?text=Standard'],
-                ['Basic Package', 'Essential features', 9.99, 'https://via.placeholder.com/300x200/ffc107/ffffff?text=Basic']
-            ];
-            products.forEach(product => {
-                db.run("INSERT INTO products (name, description, price, image) VALUES (?, ?, ?, ?)", product);
-            });
-        }
-    });
-
-    // Create admin user
-    db.get("SELECT COUNT(*) as count FROM users", (err, row) => {
-        if (!err && row.count === 0) {
-            bcrypt.hash('admin123', 10, (err, hash) => {
-                if (!err) {
-                    db.run("INSERT INTO users (username, password) VALUES (?, ?)", ['admin', hash]);
-                }
-            });
-        }
-    });
 });
-
-// Simple session management
-const sessions = {};
-
-function requireAuth(req, res, next) {
-    const sessionId = req.cookies.sessionId;
-    if (sessionId && sessions[sessionId]) {
-        req.user = sessions[sessionId];
-        next();
-    } else {
-        res.redirect('/login');
-    }
-}
 
 // Routes
 app.get('/', (req, res) => {
-    db.all("SELECT * FROM products ORDER BY id DESC", [], (err, products) => {
+    db.all("SELECT * FROM products", [], (err, products) => {
         if (err) {
             console.error(err);
             return res.status(500).send('Database error');
         }
-        res.render('index', { products, user: null });
+        res.render('index', { products });
     });
 });
 
-// Auth routes
-app.get('/login', (req, res) => {
-    res.render('login', { error: null });
-});
-
-app.get('/register', (req, res) => {
-    res.render('register', { error: null });
-});
-
-app.post('/register', (req, res) => {
-    const { username, password } = req.body;
-    
-    if (!username || !password) {
-        return res.render('register', { error: 'Username and password required' });
-    }
-
-    if (password.length < 6) {
-        return res.render('register', { error: 'Password must be at least 6 characters' });
-    }
-
-    bcrypt.hash(password, 10, (err, hash) => {
+app.get('/product/:id', (req, res) => {
+    const productId = req.params.id;
+    db.get("SELECT * FROM products WHERE id = ?", [productId], (err, product) => {
         if (err) {
-            return res.render('register', { error: 'Registration failed' });
-        }
-
-        db.run("INSERT INTO users (username, password) VALUES (?, ?)", [username, hash], function(err) {
-            if (err) {
-                return res.render('register', { error: 'Username already exists' });
-            }
-            res.redirect('/login?success=1');
-        });
-    });
-});
-
-app.post('/login', (req, res) => {
-    const { username, password } = req.body;
-    
-    db.get("SELECT * FROM users WHERE username = ?", [username], (err, user) => {
-        if (err || !user) {
-            return res.render('login', { error: 'Invalid credentials' });
-        }
-
-        bcrypt.compare(password, user.password, (err, match) => {
-            if (err || !match) {
-                return res.render('login', { error: 'Invalid credentials' });
-            }
-
-            const sessionId = crypto.randomBytes(32).toString('hex');
-            sessions[sessionId] = user;
-            
-            res.cookie('sessionId', sessionId);
-            res.redirect('/dashboard');
-        });
-    });
-});
-
-app.get('/dashboard', requireAuth, (req, res) => {
-    db.all("SELECT * FROM products ORDER BY id DESC", [], (err, products) => {
-        if (err) {
+            console.error(err);
             return res.status(500).send('Database error');
         }
-        
-        db.all(`
-            SELECT o.*, p.name as product_name 
-            FROM orders o 
-            JOIN products p ON o.product_id = p.id 
-            WHERE o.user_id = ? 
-            ORDER BY o.created_at DESC
-        `, [req.user.id], (err, orders) => {
+        if (!product) {
+            return res.status(404).send('Product not found');
+        }
+        res.render('product', { product });
+    });
+});
+
+app.get('/checkout', (req, res) => {
+    const cartItems = req.query.items ? JSON.parse(req.query.items) : [];
+    let total = 0;
+    
+    if (cartItems.length > 0) {
+        const productIds = cartItems.map(item => item.id).join(',');
+        db.all(`SELECT * FROM products WHERE id IN (${productIds})`, [], (err, products) => {
             if (err) {
                 console.error(err);
-                orders = [];
+                return res.status(500).send('Database error');
             }
-            res.render('dashboard', { products, orders, user: req.user });
+            
+            const cartWithDetails = cartItems.map(cartItem => {
+                const product = products.find(p => p.id == cartItem.id);
+                const itemTotal = product.price * cartItem.quantity;
+                total += itemTotal;
+                return {
+                    ...product,
+                    quantity: cartItem.quantity,
+                    itemTotal: itemTotal
+                };
+            });
+            
+            res.render('checkout', { 
+                cartItems: cartWithDetails, 
+                total: total.toFixed(2)
+            });
         });
-    });
-});
-
-app.get('/logout', (req, res) => {
-    const sessionId = req.cookies.sessionId;
-    if (sessionId) {
-        delete sessions[sessionId];
+    } else {
+        res.render('checkout', { cartItems: [], total: '0.00' });
     }
-    res.clearCookie('sessionId');
-    res.redirect('/');
 });
 
-// Buy product
-app.post('/buy/:productId', requireAuth, (req, res) => {
-    const productId = req.params.productId;
-    const quantity = parseInt(req.body.quantity) || 1;
+// WolvPay payment creation
+async function createWolvPayPayment(orderData) {
+    try {
+        const response = await axios.post('https://api.wolvpay.com/v1/payments', {
+            amount: orderData.total,
+            currency: 'USD',
+            order_id: orderData.orderId,
+            callback_url: `${process.env.BASE_URL || 'http://localhost:3000'}/webhook/wolvpay`,
+            customer_email: orderData.email
+        }, {
+            headers: {
+                'Authorization': `Bearer ${WOLVPAY_API_KEY}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        return response.data;
+    } catch (error) {
+        console.error('WolvPay API Error:', error.response?.data || error.message);
+        throw error;
+    }
+}
 
-    db.get("SELECT * FROM products WHERE id = ?", [productId], async (err, product) => {
-        if (err || !product) {
-            return res.status(404).json({ error: 'Product not found' });
-        }
+// OxaPay payment creation
+async function createOxaPayPayment(orderData) {
+    try {
+        const response = await axios.post('https://api.oxapay.com/merchants/request', {
+            merchant: OXAPAY_API_KEY,
+            amount: orderData.total,
+            currency: 'USD',
+            lifeTime: 30,
+            feePaidByPayer: 0,
+            underPaidCover: 5,
+            callbackUrl: `${process.env.BASE_URL || 'http://localhost:3000'}/webhook/oxapay`,
+            returnUrl: `${process.env.BASE_URL || 'http://localhost:3000'}/payment-success`,
+            description: `Order #${orderData.orderId}`
+        }, {
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        return response.data;
+    } catch (error) {
+        console.error('OxaPay API Error:', error.response?.data || error.message);
+        throw error;
+    }
+}
 
-        const totalAmount = product.price * quantity;
-
-        // Create order
+// Process payment
+app.post('/process-payment', async (req, res) => {
+    const { email, cartItems, total, paymentMethod } = req.body;
+    
+    try {
+        // Create order in database
         db.run(
-            "INSERT INTO orders (user_id, product_id, quantity, total_amount) VALUES (?, ?, ?, ?)",
-            [req.user.id, productId, quantity, totalAmount],
+            "INSERT INTO orders (customer_email, total_amount, payment_method) VALUES (?, ?, ?)",
+            [email, total, paymentMethod],
             async function(err) {
                 if (err) {
+                    console.error(err);
                     return res.status(500).json({ error: 'Failed to create order' });
                 }
-
+                
                 const orderId = this.lastID;
-
+                
+                // Add order items
+                const cartData = JSON.parse(cartItems);
+                for (const item of cartData) {
+                    db.run(
+                        "INSERT INTO order_items (order_id, product_id, quantity, price) VALUES (?, ?, ?, ?)",
+                        [orderId, item.id, item.quantity, item.price]
+                    );
+                }
+                
+                const orderData = {
+                    orderId: orderId,
+                    email: email,
+                    total: parseFloat(total)
+                };
+                
                 try {
-                    // Create OxaPay payment
-                    const paymentData = {
-                        merchant: OXAPAY_API_KEY,
-                        amount: totalAmount,
-                        currency: 'USD',
-                        lifeTime: 30,
-                        feePaidByPayer: 0,
-                        underPaidCover: 5,
-                        callbackUrl: `${req.protocol}://${req.get('host')}/webhook/oxapay`,
-                        returnUrl: `${req.protocol}://${req.get('host')}/payment-success`,
-                        description: `Order #${orderId} - ${product.name}`
-                    };
-
-                    const response = await axios.post('https://api.oxapay.com/merchants/request', paymentData);
+                    let paymentResponse;
                     
-                    if (response.data.result === 100) {
+                    if (paymentMethod === 'wolvpay') {
+                        paymentResponse = await createWolvPayPayment(orderData);
+                        
                         // Update order with payment details
                         db.run(
-                            "UPDATE orders SET payment_id = ?, crypto_address = ? WHERE id = ?",
-                            [response.data.trackId, response.data.payLink, orderId]
+                            "UPDATE orders SET payment_id = ?, crypto_address = ?, crypto_amount = ?, crypto_currency = ? WHERE id = ?",
+                            [paymentResponse.payment_id, paymentResponse.address, paymentResponse.amount, paymentResponse.currency, orderId]
                         );
-
+                        
                         res.json({
                             success: true,
-                            paymentId: response.data.trackId,
-                            paymentUrl: response.data.payLink,
-                            orderId: orderId
+                            paymentUrl: paymentResponse.payment_url,
+                            paymentDetails: {
+                                address: paymentResponse.address,
+                                amount: paymentResponse.amount,
+                                currency: paymentResponse.currency,
+                                qr_code: paymentResponse.qr_code
+                            }
                         });
+                        
+                    } else if (paymentMethod === 'oxapay') {
+                        paymentResponse = await createOxaPayPayment(orderData);
+                        
+                        if (paymentResponse.result === 100) {
+                            // Update order with payment details
+                            db.run(
+                                "UPDATE orders SET payment_id = ?, crypto_address = ?, crypto_amount = ?, crypto_currency = ? WHERE id = ?",
+                                [paymentResponse.trackId, paymentResponse.payLink, paymentResponse.amount, paymentResponse.currency, orderId]
+                            );
+                            
+                            res.json({
+                                success: true,
+                                paymentUrl: paymentResponse.payLink,
+                                paymentDetails: {
+                                    trackId: paymentResponse.trackId,
+                                    amount: paymentResponse.amount,
+                                    currency: paymentResponse.currency
+                                }
+                            });
+                        } else {
+                            throw new Error('OxaPay payment creation failed');
+                        }
                     } else {
-                        throw new Error('Payment creation failed');
+                        res.status(400).json({ error: 'Invalid payment method' });
                     }
-
+                    
                 } catch (paymentError) {
-                    console.error('Payment error:', paymentError);
-                    res.status(500).json({ error: 'Payment creation failed' });
+                    console.error('Payment creation error:', paymentError);
+                    res.status(500).json({ error: 'Payment creation failed. Please try again.' });
                 }
             }
         );
-    });
+    } catch (error) {
+        console.error('Order processing error:', error);
+        res.status(500).json({ error: 'Failed to process order' });
+    }
 });
 
-// Webhook
-app.post('/webhook/oxapay', (req, res) => {
-    console.log('OxaPay webhook:', req.body);
+// WolvPay webhook
+app.post('/webhook/wolvpay', (req, res) => {
+    const webhookData = req.body;
+    console.log('WolvPay Webhook received:', webhookData);
     
-    if (req.body.status === 'Paid') {
-        db.run(
-            "UPDATE orders SET payment_status = 'completed' WHERE payment_id = ?",
-            [req.body.trackId],
-            (err) => {
-                if (err) {
-                    console.error('Webhook error:', err);
-                }
-            }
-        );
+    // Verify webhook signature if needed
+    const receivedSignature = req.headers['x-webhook-signature'];
+    const expectedSignature = crypto.createHmac('sha256', WOLVPAY_WEBHOOK)
+        .update(JSON.stringify(webhookData))
+        .digest('hex');
+    
+    if (receivedSignature !== expectedSignature) {
+        return res.status(401).send('Unauthorized');
     }
     
-    res.status(200).send('OK');
+    // Update order status
+    if (webhookData.status === 'completed') {
+        db.run(
+            "UPDATE orders SET payment_status = 'completed', webhook_data = ? WHERE payment_id = ?",
+            [JSON.stringify(webhookData), webhookData.payment_id],
+            (err) => {
+                if (err) {
+                    console.error('Failed to update order:', err);
+                    return res.status(500).send('Failed to update order');
+                }
+                console.log(`Order with payment ID ${webhookData.payment_id} marked as completed`);
+                res.status(200).send('OK');
+            }
+        );
+    } else {
+        res.status(200).send('OK');
+    }
+});
+
+// OxaPay webhook
+app.post('/webhook/oxapay', (req, res) => {
+    const webhookData = req.body;
+    console.log('OxaPay Webhook received:', webhookData);
+    
+    // Update order status
+    if (webhookData.status === 'Paid') {
+        db.run(
+            "UPDATE orders SET payment_status = 'completed', webhook_data = ? WHERE payment_id = ?",
+            [JSON.stringify(webhookData), webhookData.trackId],
+            (err) => {
+                if (err) {
+                    console.error('Failed to update order:', err);
+                    return res.status(500).send('Failed to update order');
+                }
+                console.log(`Order with track ID ${webhookData.trackId} marked as completed`);
+                res.status(200).send('OK');
+            }
+        );
+    } else {
+        res.status(200).send('OK');
+    }
 });
 
 // Payment success page
 app.get('/payment-success', (req, res) => {
-    res.render('success');
+    res.send(`
+        <div style="text-align: center; padding: 50px; font-family: Arial;">
+            <h2>✅ Payment Successful!</h2>
+            <p>Your order has been processed successfully.</p>
+            <p>You will receive a confirmation email shortly.</p>
+            <a href="/" style="background: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Continue Shopping</a>
+        </div>
+    `);
 });
 
 // Admin routes
 app.get('/admin', (req, res) => {
-    res.render('admin_login', { error: null });
-});
-
-app.post('/admin/login', (req, res) => {
-    const { username, password } = req.body;
-    
-    if (username === 'admin' && password === 'admin123') {
-        const sessionId = crypto.randomBytes(32).toString('hex');
-        sessions[sessionId] = { id: 0, username: 'admin', isAdmin: true };
-        res.cookie('sessionId', sessionId);
-        res.redirect('/admin/dashboard');
-    } else {
-        res.render('admin_login', { error: 'Invalid credentials' });
-    }
+    res.render('admin_login');
 });
 
 app.get('/admin/dashboard', (req, res) => {
-    const sessionId = req.cookies.sessionId;
-    if (!sessionId || !sessions[sessionId] || !sessions[sessionId].isAdmin) {
-        return res.redirect('/admin');
-    }
-
+    // Get orders with payment details
     db.all(`
-        SELECT o.*, u.username, p.name as product_name 
+        SELECT o.*, 
+               COUNT(oi.id) as item_count
         FROM orders o 
-        LEFT JOIN users u ON o.user_id = u.id 
-        LEFT JOIN products p ON o.product_id = p.id 
+        LEFT JOIN order_items oi ON o.id = oi.order_id 
+        GROUP BY o.id 
         ORDER BY o.created_at DESC
     `, [], (err, orders) => {
         if (err) {
             console.error(err);
-            orders = [];
+            return res.status(500).send('Database error');
         }
+        res.render('admin_dashboard', { orders });
+    });
+});
 
-        db.all("SELECT * FROM products ORDER BY id DESC", [], (err, products) => {
-            if (err) {
-                console.error(err);
-                products = [];
-            }
-            res.render('admin_dashboard', { orders, products });
-        });
+// Check payment status endpoint
+app.get('/check-payment/:orderId', (req, res) => {
+    const orderId = req.params.orderId;
+    
+    db.get("SELECT payment_status FROM orders WHERE id = ?", [orderId], (err, order) => {
+        if (err) {
+            return res.status(500).json({ error: 'Database error' });
+        }
+        if (!order) {
+            return res.status(404).json({ error: 'Order not found' });
+        }
+        res.json({ status: order.payment_status });
     });
 });
 
 app.listen(port, () => {
     console.log(`🚀 Crypto Store running on port ${port}`);
-    console.log(`💎 OxaPay integration active`);
-    console.log(`👤 Default admin: admin / admin123`);
+    console.log(`💎 WolvPay and OxaPay integration active`);
 });
